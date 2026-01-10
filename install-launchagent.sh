@@ -60,7 +60,7 @@ cat > "${PLIST_LOCAL}" <<EOF
     <key>EnvironmentVariables</key>
     <dict>
         <key>PORT</key>
-        <string>9877</string>
+        <string>9878</string>
         <key>HOME</key>
         <string>${HOME}</string>
         <key>PATH</key>
