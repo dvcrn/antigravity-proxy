@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(just format)",
+      "Bash(just build-worker:*)",
+      "Bash(sed:*)",
+      "Bash(go test:*)"
+    ],
+    "deny": []
+  }
+}

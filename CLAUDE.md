@@ -1,0 +1,88 @@
+# CLAUDE.md
+
+## Required Steps
+
+After making code changes, always run:
+- `mise run format` - Format Go code using goimports and gofumpt
+- `mise run test` - Run all tests to ensure nothing is broken
+
+## Common Development Commands
+
+### Building and Running
+- `mise run build` - Build the proxy binary for local use
+- `mise run run` - Run the proxy locally on port 9877
+- `mise run build-worker` - Build for Cloudflare Workers deployment
+- `mise run wrangler-dev` - Run local development server with Wrangler
+
+### Development
+- `mise run test` - Run all tests
+- `go test ./internal/server -v` - Run specific package tests with verbose output
+
+## High-Level Architecture
+
+This is a Go proxy server that transforms standard Gemini API requests into Google's internal CloudCode format used by Gemini Code Assist API.
+
+### Core Components
+
+#### Server (`internal/server/`)
+- `server.go` - Main HTTP server with routing and request handling
+- `admin_middleware.go` - Admin API middleware (protected by `ADMIN_API_KEY`)
+- `chat_completions_handler.go` - OpenAI-compatible chat completions endpoint
+- `stream_generate_content_handler.go` - Gemini streaming/non-streaming content endpoints
+- `models_handler.go` - OpenAI-style models listing/details endpoint
+- `gemini_helpers.go` - Shared helpers (model normalization, path parsing, SSE unwrap)
+- `http_client*.go` - HTTP client abstractions (separate Workers vs default implementations)
+
+#### Credentials (`internal/credentials/`)
+- **provider.go** - Interface for credential management
+- **file_provider.go** - File-based credentials (local development)
+- **cloudflare_kv_provider.go** - KV-based credentials (Workers deployment)
+- Auto-handles OAuth token refresh when expired
+
+#### Environment (`internal/env/`)
+- **env.go** - Environment variable access for standard Go
+- **env_workers.go** - Environment variable access for Workers runtime
+
+### Dual Deployment Architecture
+
+The codebase supports two deployment modes:
+
+1. **Local/Traditional** (`cmd/antigravity-proxy/`) - Uses FileProvider for credentials
+2. **Cloudflare Workers** (`cmd/antigravity-proxy-worker/`) - Uses CloudflareKVProvider for credentials
+
+### Key Transformations
+
+1. **URL Rewriting**: `/v1beta/models/MODEL:ACTION` → `/v1internal:ACTION`
+2. **Model Normalization**: Any model containing "pro"→"gemini-2.5-pro", "flash"→"gemini-2.5-flash"
+3. **Request Wrapping**: Standard Gemini requests wrapped in CloudCode format with project ID
+4. **Response Unwrapping**: CloudCode responses unwrapped from "response" field
+5. **SSE Streaming**: Real-time transformation of Server-Sent Events for streaming responses
+
+### Authentication Flow
+
+- Uses OAuth credentials (access_token, refresh_token) to authenticate with CloudCode API
+- Automatically refreshes expired tokens using refresh_token
+- For Workers: Admin API allows secure credential upload/management
+- Supports both environment-provided project ID or auto-discovery via CloudCode API
+
+### Workers-Specific Considerations
+
+- Cannot access filesystem - uses CloudflareKVProvider instead of FileProvider
+- HTTP client uses Workers-compatible fetch API (`github.com/syumai/workers`)
+- Graceful fallback for missing http.Flusher support in streaming responses
+- Admin API required for credential management (no file access)
+
+## Important Patterns
+
+- All logging uses zerolog (`internal/logger`) with structured logging
+- Environment variables handled through `internal/env` abstraction
+- Credential providers implement common interface for different storage backends
+- Server supports both regular JSON and SSE streaming responses
+- Middleware applied to admin-protected routes (credentials, streaming, chat)
+
+## Performance Considerations
+
+### Request Compression
+- **IMPORTANT**: Request body compression is intentionally disabled. Testing revealed that CloudCode API has severe performance issues with gzip-compressed requests (50+ seconds vs 2.6 seconds without compression).
+- The proxy sends all requests uncompressed to ensure optimal streaming performance.
+- This was discovered through debugging where direct `curl` requests to CloudCode API (without compression) were significantly faster than proxy requests with compression.

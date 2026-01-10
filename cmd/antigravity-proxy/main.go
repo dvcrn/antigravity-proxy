@@ -1,0 +1,52 @@
+package main
+
+import (
+	"fmt"
+
+	"github.com/dvcrn/gemini-code-assist-proxy/internal/antigravity"
+	"github.com/dvcrn/gemini-code-assist-proxy/internal/credentials"
+	"github.com/dvcrn/gemini-code-assist-proxy/internal/env"
+	"github.com/dvcrn/gemini-code-assist-proxy/internal/logger"
+	"github.com/dvcrn/gemini-code-assist-proxy/internal/project"
+	"github.com/dvcrn/gemini-code-assist-proxy/internal/server"
+)
+
+func main() {
+	port := env.GetOrDefault("PORT", "9878")
+
+	// Create file provider
+	provider, err := credentials.NewFileProvider()
+	if err != nil {
+		logger.Get().Fatal().Err(err).Msg("Failed to create credentials provider")
+	}
+
+	// Perform startup auth check
+	logger.Get().Info().Msg("Performing startup authentication check...")
+	antigravityClient := antigravity.NewClient(provider)
+	loadAssistResponse, err := antigravityClient.LoadCodeAssist()
+	if err != nil {
+		logger.Get().Warn().Err(err).Msg("Startup authentication check failed.")
+	} else {
+		tier := fmt.Sprintf("%s (%s)", loadAssistResponse.CurrentTier.Name, loadAssistResponse.CurrentTier.ID)
+		logger.Get().Info().
+			Str("tier", tier).
+			Str("project_id", loadAssistResponse.CloudAICompanionProject).
+			Bool("gcp_managed", loadAssistResponse.GCPManaged).
+			Msg("Startup authentication check successful.")
+	}
+
+	// Discover project ID
+	envProjectID, _ := env.Get("CLOUDCODE_GCP_PROJECT_ID")
+	projectID, err := project.Discover(provider, envProjectID, loadAssistResponse)
+	if err != nil {
+		logger.Get().Fatal().Err(err).Msg("Failed to discover project ID")
+	}
+
+	// Create server with provider and project ID
+	srv := server.NewServer(provider, projectID)
+
+	// Start server
+	if err := srv.Start(":" + port); err != nil {
+		logger.Get().Fatal().Err(err).Msg("Failed to start server")
+	}
+}

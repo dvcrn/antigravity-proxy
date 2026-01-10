@@ -1,0 +1,12 @@
+.env
+gemini-proxy
+node_modules
+*.wasm
+.wrangler/
+*.folder
+*.har
+*.proxymanlogv2
+build/
+com.gemini-proxy.plist
+/gemini-code-assist-proxy
+.gocache

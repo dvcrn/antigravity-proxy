@@ -1,0 +1,240 @@
+package project
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"time"
+
+	"github.com/dvcrn/gemini-code-assist-proxy/internal/antigravity"
+	"github.com/dvcrn/gemini-code-assist-proxy/internal/credentials"
+	"github.com/dvcrn/gemini-code-assist-proxy/internal/logger"
+)
+
+// Discover determines the GCP Project ID to use for the proxy.
+func Discover(provider credentials.CredentialsProvider, envProjectID string, loadAssist *antigravity.LoadCodeAssistResponse) (string, error) {
+	// 1. Check for environment variable override
+	if envProjectID != "" {
+		logger.Get().Info().Str("project_id", envProjectID).Msg("Using project ID from CLOUDCODE_GCP_PROJECT_ID environment variable")
+		return envProjectID, nil
+	}
+
+	// 2. Check the pre-fetched loadAssist response
+	if loadAssist == nil {
+		return "", fmt.Errorf("loadAssist response is nil")
+	}
+
+	// 3. If not GCP Managed, use the CloudAICompanionProject
+	if !loadAssist.GCPManaged {
+		projectID := loadAssist.CloudAICompanionProject
+		logger.Get().Info().Str("project_id", projectID).Msg("Using project ID from loadCodeAssist (gcpManaged=false)")
+		return projectID, nil
+	}
+
+	// 4. If GCP Managed, run the full discovery/onboarding flow
+	logger.Get().Info().Msg("gcpManaged=true, starting full project discovery and onboarding flow")
+	return runOnboardingFlow(provider, loadAssist)
+}
+
+func runOnboardingFlow(provider credentials.CredentialsProvider, loadResponse *antigravity.LoadCodeAssistResponse) (string, error) {
+	discoveryStartTime := time.Now()
+
+	// No need to get creds here anymore, callEndpoint will do it
+
+	if companionProject := loadResponse.CloudAICompanionProject; companionProject != "" {
+		logger.Get().Info().
+			Str("project_id", companionProject).
+			Dur("quick_discovery_duration", time.Since(discoveryStartTime)).
+			Msg("Discovered project ID (quick path)")
+		return companionProject, nil
+	}
+
+	// Onboarding flow
+	logger.Get().Debug().Msg("Starting onboarding flow")
+	onboardingStart := time.Now()
+
+	var tierID string
+	if loadResponse.AllowedTiers != nil {
+		for _, tier := range loadResponse.AllowedTiers {
+			if tier.IsDefault {
+				tierID = tier.ID
+				break
+			}
+		}
+	}
+	if tierID == "" {
+		tierID = "free-tier"
+	}
+	logger.Get().Debug().Str("tier_id", tierID).Msg("Selected tier for onboarding")
+
+	initialProjectID := "default"
+	clientMetadata := map[string]interface{}{
+		"ideType":     "IDE_UNSPECIFIED",
+		"platform":    "PLATFORM_UNSPECIFIED",
+		"pluginType":  "GEMINI",
+		"duetProject": initialProjectID,
+	}
+
+	onboardRequest := map[string]interface{}{
+		"tierId":                  tierID,
+		"cloudaicompanionProject": initialProjectID,
+		"metadata":                clientMetadata,
+	}
+
+	// Initial onboarding call
+	onboardCallStart := time.Now()
+	lroResponse, err := callEndpoint(provider, "onboardUser", onboardRequest)
+	if err != nil {
+		return "", fmt.Errorf("failed to call onboardUser: %w", err)
+	}
+	onboardCallDuration := time.Since(onboardCallStart)
+	logger.Get().Debug().
+		Dur("onboard_user_duration", onboardCallDuration).
+		Msg("onboardUser call complete")
+
+	// Polling for completion
+	pollCount := 0
+	pollStart := time.Now()
+	for {
+		if done, ok := lroResponse["done"].(bool); ok && done {
+			if response, ok := lroResponse["response"].(map[string]interface{}); ok {
+				if companionProject, ok := response["cloudaicompanionProject"].(map[string]interface{}); ok {
+					if id, ok := companionProject["id"].(string); ok && id != "" {
+						onboardingDuration := time.Since(onboardingStart)
+						logger.Get().Info().
+							Str("project_id", id).
+							Dur("onboarding_duration", onboardingDuration).
+							Int("poll_count", pollCount).
+							Dur("polling_duration", time.Since(pollStart)).
+							Msg("Discovered project ID after onboarding")
+						return id, nil
+					}
+				}
+			}
+			return "", fmt.Errorf("onboarding completed but no project ID found")
+		}
+
+		pollCount++
+		logger.Get().Debug().
+			Int("poll_count", pollCount).
+			Dur("elapsed", time.Since(pollStart)).
+			Msg("Polling onboardUser status")
+
+		time.Sleep(2 * time.Second)
+
+		pollCallStart := time.Now()
+		lroResponse, err = callEndpoint(provider, "onboardUser", onboardRequest)
+		if err != nil {
+			return "", fmt.Errorf("failed to poll onboardUser: %w", err)
+		}
+		pollCallDuration := time.Since(pollCallStart)
+		logger.Get().Debug().
+			Dur("poll_call_duration", pollCallDuration).
+			Msg("Polling call complete")
+	}
+}
+
+func callEndpoint(provider credentials.CredentialsProvider, method string, body interface{}) (map[string]interface{}, error) {
+	callStart := time.Now()
+	defer func() {
+		callDuration := time.Since(callStart)
+		logger.Get().Debug().
+			Str("method", method).
+			Dur("endpoint_call_duration", callDuration).
+			Msg("Code Assist API call complete")
+	}()
+
+	creds, err := provider.GetCredentials()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get credentials: %w", err)
+	}
+	accessToken := creds.AccessToken
+
+	reqBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+
+	httpClient := &http.Client{}
+	var lastErr error
+
+	for _, endpoint := range antigravity.Endpoints {
+		url := fmt.Sprintf("%s/%s:%s", endpoint, credentials.CodeAssistAPIVersion, method)
+		req, err := http.NewRequest("POST", url, bytes.NewReader(reqBody))
+		if err != nil {
+			return nil, err
+		}
+
+		antigravity.ApplyHeaders(req.Header, accessToken, "application/json")
+
+		httpStart := time.Now()
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			logger.Get().Warn().Err(err).Str("endpoint", endpoint).Msg("Project discovery request failed")
+			continue
+		}
+		httpDuration := time.Since(httpStart)
+
+		if resp.StatusCode == http.StatusUnauthorized {
+			resp.Body.Close()
+			logger.Get().Info().Msg("Received 401 Unauthorized, attempting to refresh token...")
+			if err := provider.RefreshToken(); err != nil {
+				return nil, fmt.Errorf("failed to refresh token: %w", err)
+			}
+			refreshedCreds, err := provider.GetCredentials()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get credentials after refresh: %w", err)
+			}
+			accessToken = refreshedCreds.AccessToken
+
+			req, err = http.NewRequest("POST", url, bytes.NewReader(reqBody))
+			if err != nil {
+				return nil, err
+			}
+			antigravity.ApplyHeaders(req.Header, accessToken, "application/json")
+			resp, err = httpClient.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("failed to make request after token refresh: %w", err)
+			}
+		}
+		respBody, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			logger.Get().Warn().Err(err).Str("endpoint", endpoint).Msg("Project discovery response read failed")
+			continue
+		}
+
+		logger.Get().Debug().
+			Str("method", method).
+			Dur("http_duration", httpDuration).
+			Int("status_code", resp.StatusCode).
+			Int("response_size", len(respBody)).
+			Str("endpoint", endpoint).
+			Msg("HTTP request complete")
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("API call failed with status %d: %s", resp.StatusCode, string(respBody))
+			logger.Get().Warn().
+				Int("status", resp.StatusCode).
+				Str("endpoint", endpoint).
+				Msg("Project discovery returned non-OK status")
+			continue
+		}
+
+		var result map[string]interface{}
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return nil, err
+		}
+
+		return result, nil
+	}
+
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("project discovery failed with no endpoints available")
+}
