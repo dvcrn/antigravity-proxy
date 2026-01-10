@@ -70,3 +70,58 @@ func TestToolResponseNameResolutionViaToolCallID(t *testing.T) {
 		t.Fatalf("functionResponse.response.output missing or not a string: %#v", part.FunctionResponse.Response)
 	}
 }
+
+func TestToolResponsesInsertedBeforeAssistantText(t *testing.T) {
+	req := &openai.ChatCompletionRequest{
+		Model: "gemini-2.5-pro",
+		Messages: []openai.Message{
+			{
+				Role:    "user",
+				Content: "Read README",
+			},
+			{
+				Role: "assistant",
+				ToolCalls: []openai.OpenAIToolCall{
+					{
+						Index: 0,
+						ID:    "call_1",
+						Type:  "function",
+						Function: openai.OpenAIFunctionCall{
+							Name:      "read",
+							Arguments: `{"file_path":"README.md"}`,
+						},
+					},
+				},
+			},
+			{
+				Role:       "tool",
+				ToolCallID: "call_1",
+				Content:    "README contents",
+			},
+			{
+				Role:    "assistant",
+				Content: "All done",
+			},
+		},
+		Stream: true,
+	}
+
+	got, err := ToGeminiRequest(req, "test-project")
+	require.NoError(t, err, "ToGeminiRequest should succeed")
+	require.Len(t, got.Request.Contents, 4, "expected four content turns")
+
+	assert.Equal(t, "user", got.Request.Contents[0].Role)
+	assert.Equal(t, "model", got.Request.Contents[1].Role)
+	assert.Equal(t, "user", got.Request.Contents[2].Role)
+	assert.Equal(t, "model", got.Request.Contents[3].Role)
+
+	toolResp := got.Request.Contents[2]
+	require.Len(t, toolResp.Parts, 1)
+	require.NotNil(t, toolResp.Parts[0].FunctionResponse)
+	assert.Equal(t, "read", toolResp.Parts[0].FunctionResponse.Name)
+	assert.Equal(t, "call_1", toolResp.Parts[0].FunctionResponse.ID)
+
+	finalMsg := got.Request.Contents[3]
+	require.Len(t, finalMsg.Parts, 1)
+	assert.Equal(t, "All done", finalMsg.Parts[0].Text)
+}

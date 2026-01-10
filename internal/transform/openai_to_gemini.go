@@ -67,7 +67,18 @@ func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents 
 	}
 
 	for _, msg := range messages {
-		if msg.Role == "system" {
+		roleLower := strings.ToLower(msg.Role)
+		isTool := roleLower == "tool"
+
+		if !isTool && len(pendingToolParts) > 0 {
+			geminiContents = append(geminiContents, antigravity.Content{
+				Role:  "user",
+				Parts: pendingToolParts,
+			})
+			pendingToolParts = nil
+		}
+
+		if roleLower == "system" {
 			// Allow multiple system messages by concatenating their parts
 			if systemInstruction == nil {
 				systemInstruction = &antigravity.SystemInstruction{
@@ -97,12 +108,13 @@ func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents 
 		}
 
 		var role string
-		switch msg.Role {
+		switch roleLower {
 		case "user":
 			role = "user"
 		case "assistant":
 			role = "model"
-		// TODO: handle tool role
+		case "tool":
+			role = "user"
 		default:
 			role = "user" // Default to user
 		}
@@ -110,7 +122,7 @@ func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents 
 		var parts []antigravity.ContentPart
 		switch content := msg.Content.(type) {
 		case string:
-			if msg.Role == "tool" {
+			if isTool {
 				resolvedName := msg.Name
 				if resolvedName == "" && msg.ToolCallID != "" {
 					if n, ok := toolCallNameByID[msg.ToolCallID]; ok {
@@ -154,7 +166,7 @@ func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents 
 				}
 			}
 		case []interface{}:
-			if msg.Role == "tool" {
+			if isTool {
 				var buf strings.Builder
 				for _, part := range content {
 					if p, ok := part.(map[string]interface{}); ok && p["type"] == "text" {
@@ -219,7 +231,7 @@ func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents 
 		}
 
 		// Map assistant tool calls to functionCall parts
-		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+		if roleLower == "assistant" && len(msg.ToolCalls) > 0 {
 			for _, tc := range msg.ToolCalls {
 				var args map[string]interface{}
 				if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
@@ -243,11 +255,11 @@ func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents 
 			}
 		}
 
-		if strings.ToLower(msg.Role) == "tool" {
+		if isTool {
 			if len(parts) > 0 {
 				pendingToolParts = append(pendingToolParts, parts...)
-				parts = nil
 			}
+			continue
 		}
 		if len(parts) > 0 {
 			geminiContents = append(geminiContents, antigravity.Content{

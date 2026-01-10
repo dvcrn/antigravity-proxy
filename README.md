@@ -5,7 +5,7 @@ Proxy to expose the Antigravity API through standard APIs (Gemini, OpenAI) that 
 ```text
   ┌───────────────┐          ┌───────────────────┐          ┌───────────────────────┐
   │ External Tool │          │ Antigravity Proxy │          │ Google Cloud Endpoint │
-  │ (OpenCode/etc)│          │ (Local or Worker) │          │  (Gemini Code Assist) │
+  │ (OpenCode/etc)│          │ (Local or Worker) │          │      (CloudCode)      │
   └───────┬───────┘          └─────────┬─────────┘          └───────────┬───────────┘
           │                            │                                │
           │  Standard API Request      │    Internal API Request        │
@@ -73,7 +73,7 @@ Configurable with the following env variables:
 
 ## Usage in other tools
 
-You can use either the native Gemini-supported API at `http://localhost:9878/v1beta`, or the OpenAI transform endpoint at `http://localhost:9878/v1/messages`
+You can use either the native Gemini-supported API at `http://localhost:9878/v1beta`, or the OpenAI transform endpoint at `http://localhost:9878/v1/chat/completions`
 
 Recommended to use the Google / Gemini API when available as it's native to Antigravity
 
@@ -139,7 +139,7 @@ For production deployment on Cloudflare Workers:
 2. **Build for Workers**:
 
    ```bash
-   just build-worker
+   mise run build-worker
    ```
 
 3. **Deploy to Cloudflare**:
@@ -256,14 +256,14 @@ curl https://your-worker.workers.dev/admin/credentials/status \
 
 ### 1. URL Path Rewriting
 
-Transforms standard Gemini API paths to Gemini Code Assist's internal format:
+Transforms standard Gemini API paths to CloudCode's internal format:
 
 - **From:** `/v1beta/models/gemini-3-pro:generateContent`
 - **To:** `/v1internal:generateContent`
 
 ### Connection Pooling
 
-The proxy maintains persistent HTTP/2 connections to Code Assist:
+The proxy maintains persistent HTTP/2 connections to CloudCode:
 
 - Max idle connections: 100
 - Max idle connections per host: 10
@@ -271,9 +271,9 @@ The proxy maintains persistent HTTP/2 connections to Code Assist:
 
 ## Troubleshooting
 
-### Code Assist Response Delays
+### CloudCode Response Delays
 
-Code Assist can take 7+ seconds to start streaming responses. This is normal behavior from the Code Assist API, not a proxy issue. Enable debug logging to see detailed timing:
+CloudCode can take 7+ seconds to start streaming responses. This is normal behavior from the CloudCode API, not a proxy issue. Enable debug logging to see detailed timing:
 
 ```bash
 export DEBUG_SSE=true
@@ -283,9 +283,8 @@ export DEBUG_SSE=true
 
 If you receive 401 errors:
 
-1. Check that `CLOUDCODE_OAUTH_CREDS` contains valid OAuth tokens
-2. Refresh your OAuth tokens if they've expired
-3. Ensure your GCP project has Gemini Code Assist API access
+1. Check that your OAuth credentials file at `~/.config/antigravity-proxy/oauth_creds.json` contains valid tokens
+2. Refresh your OAuth tokens if they've expired (run `go run cmd/auth/main.go`)
 
 ### Debugging
 
@@ -298,5 +297,5 @@ export DEBUG_SSE=true  # Show SSE event timing
 Check logs for:
 
 - Request transformation details
-- Code Assist response times
+- CloudCode response times
 - SSE event delivery timing
