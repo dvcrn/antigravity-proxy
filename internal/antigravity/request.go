@@ -24,6 +24,13 @@ func prepareAntigravityRequest(req *GenerateContentRequest) {
 		req.Request.SessionID = deriveSessionID(req.Request.Contents)
 	}
 
+	if prunedParts, prunedContents := sanitizeContents(&req.Request.Contents); prunedParts > 0 || prunedContents > 0 {
+		logger.Get().Warn().
+			Int("pruned_parts", prunedParts).
+			Int("pruned_contents", prunedContents).
+			Msg("Removed empty content parts from request")
+	}
+
 	if missing := fillMissingParameters(req.Request.Tools); missing > 0 {
 		logger.Get().Warn().
 			Int("missing_parameters", missing).
@@ -176,4 +183,46 @@ func removeFirstMatch(values []string, target string) []string {
 		}
 	}
 	return values
+}
+
+func sanitizeContents(contents *[]Content) (int, int) {
+	if contents == nil || len(*contents) == 0 {
+		return 0, 0
+	}
+
+	prunedParts := 0
+	prunedContents := 0
+	cleaned := make([]Content, 0, len(*contents))
+	for _, content := range *contents {
+		if len(content.Parts) == 0 {
+			prunedContents++
+			continue
+		}
+
+		parts := make([]ContentPart, 0, len(content.Parts))
+		for _, part := range content.Parts {
+			if isEmptyContentPart(part) {
+				prunedParts++
+				continue
+			}
+			parts = append(parts, part)
+		}
+
+		if len(parts) == 0 {
+			prunedContents++
+			continue
+		}
+		content.Parts = parts
+		cleaned = append(cleaned, content)
+	}
+
+	*contents = cleaned
+	return prunedParts, prunedContents
+}
+
+func isEmptyContentPart(part ContentPart) bool {
+	if part.FunctionCall != nil || part.FunctionResponse != nil {
+		return false
+	}
+	return part.Text == ""
 }

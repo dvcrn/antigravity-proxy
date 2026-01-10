@@ -149,7 +149,9 @@ func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents 
 					},
 				})
 			} else {
-				parts = append(parts, antigravity.ContentPart{Text: content})
+				if content != "" {
+					parts = append(parts, antigravity.ContentPart{Text: content})
+				}
 			}
 		case []interface{}:
 			if msg.Role == "tool" {
