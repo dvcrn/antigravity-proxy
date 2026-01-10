@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/logger"
+	"github.com/dvcrn/antigravity-proxy/internal/logger"
 )
 
 func convertRawTools(raw json.RawMessage) ([]Tool, bool) {

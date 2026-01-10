@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/logger"
+	"github.com/dvcrn/antigravity-proxy/internal/logger"
 )
 
 // ContentPart represents a single part of a content message.

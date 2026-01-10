@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/antigravity"
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/logger"
+	"github.com/dvcrn/antigravity-proxy/internal/antigravity"
+	"github.com/dvcrn/antigravity-proxy/internal/logger"
 )
 
 func (s *Server) streamGenerateContentHandler(w http.ResponseWriter, r *http.Request) {

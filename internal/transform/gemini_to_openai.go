@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/antigravity"
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/openai"
+	"github.com/dvcrn/antigravity-proxy/internal/antigravity"
+	"github.com/dvcrn/antigravity-proxy/internal/openai"
 	"github.com/google/uuid"
 )
 

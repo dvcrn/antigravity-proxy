@@ -1,4 +1,4 @@
-module github.com/dvcrn/gemini-code-assist-proxy
+module github.com/dvcrn/antigravity-proxy
 
 go 1.24.4
 

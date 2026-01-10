@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/antigravity"
+	"github.com/dvcrn/antigravity-proxy/internal/antigravity"
 )
 
 func TestConvertToGeminiSchema(t *testing.T) {

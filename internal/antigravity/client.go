@@ -9,9 +9,9 @@ import (
 	"io/ioutil"
 	"net/http"
 
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/credentials"
-	serverhttp "github.com/dvcrn/gemini-code-assist-proxy/internal/http"
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/logger"
+	"github.com/dvcrn/antigravity-proxy/internal/credentials"
+	serverhttp "github.com/dvcrn/antigravity-proxy/internal/http"
+	"github.com/dvcrn/antigravity-proxy/internal/logger"
 )
 
 // Client is a client for the Antigravity Cloud Code API.

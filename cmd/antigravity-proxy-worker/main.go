@@ -5,12 +5,12 @@ package main
 import (
 	"fmt"
 
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/antigravity"
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/credentials"
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/env"
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/logger"
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/project"
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/server"
+	"github.com/dvcrn/antigravity-proxy/internal/antigravity"
+	"github.com/dvcrn/antigravity-proxy/internal/credentials"
+	"github.com/dvcrn/antigravity-proxy/internal/env"
+	"github.com/dvcrn/antigravity-proxy/internal/logger"
+	"github.com/dvcrn/antigravity-proxy/internal/project"
+	"github.com/dvcrn/antigravity-proxy/internal/server"
 	"github.com/syumai/workers"
 )
 

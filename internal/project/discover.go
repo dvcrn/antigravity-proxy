@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/antigravity"
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/credentials"
-	"github.com/dvcrn/gemini-code-assist-proxy/internal/logger"
+	"github.com/dvcrn/antigravity-proxy/internal/antigravity"
+	"github.com/dvcrn/antigravity-proxy/internal/credentials"
+	"github.com/dvcrn/antigravity-proxy/internal/logger"
 )
 
 // Discover determines the GCP Project ID to use for the proxy.
