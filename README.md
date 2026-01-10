@@ -2,6 +2,24 @@
 
 Proxy to expose the Antigravity API through standard APIs (Gemini, OpenAI) that you can plug into different tools such as OpenCode or Xcode
 
+```text
+  ┌───────────────┐          ┌───────────────────┐          ┌───────────────────────┐
+  │ External Tool │          │ Antigravity Proxy │          │ Google Cloud Endpoint │
+  │ (OpenCode/etc)│          │ (Local or Worker) │          │  (Gemini Code Assist) │
+  └───────┬───────┘          └─────────┬─────────┘          └───────────┬───────────┘
+          │                            │                                │
+          │  Standard API Request      │    Internal API Request        │
+          │ ─────────────────────────▶ │ ─────────────────────────────▶ │
+          │ (Gemini or OpenAI format)  │ (Wrapped + OAuth credentials)  │
+          │                            │                                │
+          │                            │                                │
+          │  Standard API Response     │    Internal API Response       │
+          │ ◀───────────────────────── │ ◀───────────────────────────── │
+          │ (Unwrapped + SSE Stream)   │ (JSON or Internal Stream)      │
+          │                            │                                │
+          ▼                            ▼                                ▼
+```
+
 This proxy exposes Antigravity endpoints through:
 
 - `/v1beta/<model>:streamGenerateContent` for Gemini API compatible clients
