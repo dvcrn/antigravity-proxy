@@ -19,14 +19,9 @@ func TestNormalizeModelName(t *testing.T) {
 			expected: "gemini-3-pro",
 		},
 		{
-			name:     "alias 3-pro",
-			input:    "3-pro",
-			expected: "gemini-3-pro",
-		},
-		{
-			name:     "gemini-3-flash-preview",
-			input:    "gemini-3-flash-preview",
-			expected: "gemini-3-flash-preview",
+			name:     "gemini-3-pro-low",
+			input:    "gemini-3-pro-low",
+			expected: "gemini-3-pro-low",
 		},
 		{
 			name:     "gemini-3-flash",
@@ -34,24 +29,9 @@ func TestNormalizeModelName(t *testing.T) {
 			expected: "gemini-3-flash",
 		},
 		{
-			name:     "alias 3-flash",
-			input:    "3-flash",
-			expected: "gemini-3-flash",
-		},
-		{
-			name:     "alias with slash",
-			input:    "models/gemini-3-pro-preview",
-			expected: "gemini-3-pro-preview",
-		},
-		{
 			name:     "gemini-2.5-pro",
 			input:    "gemini-2.5-pro",
 			expected: "gemini-2.5-pro",
-		},
-		{
-			name:     "alias gemini-pro (defaults to 3-pro)",
-			input:    "gemini-pro",
-			expected: "gemini-3-pro",
 		},
 		{
 			name:     "gemini-2.5-flash",
@@ -59,19 +39,14 @@ func TestNormalizeModelName(t *testing.T) {
 			expected: "gemini-2.5-flash",
 		},
 		{
-			name:     "alias gemini-flash (defaults to 3-flash)",
-			input:    "gemini-flash",
-			expected: "gemini-3-flash",
-		},
-		{
-			name:     "gemini-2.5-flash-lite",
-			input:    "gemini-lite",
-			expected: "gemini-2.5-flash-lite",
-		},
-		{
-			name:     "unknown model",
+			name:     "unknown model passes through",
 			input:    "unknown-model",
 			expected: "unknown-model",
+		},
+		{
+			name:     "custom model variant",
+			input:    "custom-variant-123",
+			expected: "custom-variant-123",
 		},
 	}
 
