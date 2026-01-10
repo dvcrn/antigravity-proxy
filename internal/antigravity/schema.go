@@ -1,0 +1,73 @@
+package antigravity
+
+import "strings"
+
+// ConvertSchema recursively converts a generic map representing a JSON schema
+// into the strongly-typed GeminiParameterSchema struct, only mapping supported fields.
+func ConvertSchema(input map[string]interface{}) *GeminiParameterSchema {
+	if input == nil {
+		return nil
+	}
+
+	// Handle complex schemas with anyOf or oneOf by prioritizing the array definition.
+	var subSchemas []interface{}
+	if anyOf, ok := input["anyOf"].([]interface{}); ok {
+		subSchemas = anyOf
+	} else if oneOf, ok := input["oneOf"].([]interface{}); ok {
+		subSchemas = oneOf
+	}
+
+	if subSchemas != nil {
+		for _, subSchema := range subSchemas {
+			if subSchemaMap, ok := subSchema.(map[string]interface{}); ok {
+				if subSchemaMap["type"] == "array" {
+					// Found the preferred array schema, convert it.
+					// We also merge the description from the parent level.
+					if parentDesc, ok := input["description"].(string); ok {
+						subSchemaMap["description"] = parentDesc
+					}
+					return ConvertSchema(subSchemaMap)
+				}
+			}
+		}
+	}
+
+	output := &GeminiParameterSchema{}
+	if t, ok := input["type"].(string); ok {
+		output.Type = strings.ToUpper(t)
+	}
+	if d, ok := input["description"].(string); ok {
+		output.Description = d
+	}
+
+	if r, ok := input["required"].([]interface{}); ok {
+		for _, v := range r {
+			if s, ok := v.(string); ok {
+				output.Required = append(output.Required, s)
+			}
+		}
+	}
+
+	if e, ok := input["enum"].([]interface{}); ok {
+		for _, v := range e {
+			if s, ok := v.(string); ok {
+				output.Enum = append(output.Enum, s)
+			}
+		}
+	}
+
+	if p, ok := input["properties"].(map[string]interface{}); ok {
+		output.Properties = make(map[string]*GeminiParameterSchema)
+		for k, v := range p {
+			if vMap, ok := v.(map[string]interface{}); ok {
+				output.Properties[k] = ConvertSchema(vMap)
+			}
+		}
+	}
+
+	if i, ok := input["items"].(map[string]interface{}); ok {
+		output.Items = ConvertSchema(i)
+	}
+
+	return output
+}

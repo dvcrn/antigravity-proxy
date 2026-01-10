@@ -1,11 +1,12 @@
 # Google Antigravity Proxy
 
-Transparently proxy to expose the Antigravity API through standard APIs that you can plug into different tools
+Proxy to expose the Antigravity API through standard APIs (Gemini, OpenAI) that you can plug into different tools such as OpenCode or Xcode
 
-This proxy supports Code Assist through:
+This proxy exposes Antigravity endpoints through:
 
 - `/v1beta/<model>:streamGenerateContent` for Gemini API compatible clients
 - `/v1/chat/completions` for OpenAI API compatible clients (experimental)
+- `/v1/models` to get available models
 
 To run locally, or to deploy to Cloudflare Workers
 
@@ -14,7 +15,7 @@ To run locally, or to deploy to Cloudflare Workers
 With Go
 
 ```
-go install github.com/dvcrn/gemini-code-assist-proxy/cmd/antigravity-proxy@latest
+go install github.com/dvcrn/antigravity-proxy/cmd/antigravity-proxy@latest
 ```
 
 Then to start:
@@ -25,7 +26,9 @@ ADMIN_API_KEY=123abc antigravity-proxy
 
 ## Auth
 
-Run `go run cmd/auth/main.go` and follow instructions
+Run `go run cmd/auth/main.go` and follow instructions. This will create the oauth creds file at `~/.config/antigravity-proxy/oauth_creds.json`
+
+You can also copy this file from your antigravity installation, but a new OAuth chain is recommended
 
 ## Development
 
@@ -49,6 +52,53 @@ Configurable with the following env variables:
 
 - `PORT` (default 9878) - which port to run under
 - `ADMIN_API_KEY` - the api key to authenticate against this server
+
+## Usage in other tools
+
+You can use either the native Gemini-supported API at `http://localhost:9878/v1beta`, or the OpenAI transform endpoint at `http://localhost:9878/v1/messages`
+
+Recommended to use the Google / Gemini API when available as it's native to Antigravity
+
+### OpenCode (through Google plugin)
+
+```json
+ "antigravity": {
+  "npm": "@ai-sdk/google",
+  "name": "Antigravity",
+  "options": {
+    "baseURL": "http://localhost:9878/v1beta",
+    "apiKey": "xxxx" # whatever you set as ADMIN_API_KEY
+  },
+  "models": {
+    "gemini-3-flash": {
+      "name": "Gemini 3 Flash (Antigravity)"
+    },
+    "claude-sonnet-4-5": {
+      "name": "Claude Sonnet 4.5 (Antigravity)"
+    }
+  }
+},
+```
+
+### OpenCode (through OpenAI)
+
+```json
+ "antigravity": {
+  "name": "Antigravity",
+  "options": {
+    "baseURL": "http://localhost:9878/v1",
+    "apiKey": "xxxx" # whatever you set as ADMIN_API_KEY
+  },
+  "models": {
+    "gemini-3-flash": {
+      "name": "Gemini 3 Flash (Antigravity)"
+    },
+    "claude-sonnet-4-5": {
+      "name": "Claude Sonnet 4.5 (Antigravity)"
+    }
+  }
+},
+```
 
 ### Cloudflare Workers Deployment
 
@@ -192,32 +242,6 @@ Transforms standard Gemini API paths to Gemini Code Assist's internal format:
 
 - **From:** `/v1beta/models/gemini-3-pro:generateContent`
 - **To:** `/v1internal:generateContent`
-
-### 2. Model Normalization
-
-Automatically converts model names to Gemini Code Assist's supported models:
-
-- Any model containing "pro" → `gemini-2.5-pro`
-- Any model containing "flash" → `gemini-2.5-flash`
-- Any model containing "lite" → `gemini-2.5-flash-lite`
-
-Examples:
-
-- `gemini-1.5-pro` → `gemini-2.5-pro`
-- `gemini-1.5-flash` → `gemini-2.5-flash`
-- `gemini-pro-latest` → `gemini-2.5-pro`
-
-## Performance Tuning
-
-### SSE Streaming Optimization
-
-The proxy uses a goroutine pipeline for efficient SSE streaming:
-
-1. **Reader goroutine**: Reads from Code Assist response
-2. **Transformer goroutine**: Transforms Code Assist SSE to Gemini format
-3. **Writer goroutine**: Writes to client with immediate flushing
-
-Tune the pipeline buffer size with `SSE_BUFFER_SIZE` (default: 3).
 
 ### Connection Pooling
 

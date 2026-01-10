@@ -1,7 +1,11 @@
 package antigravity
 
 import (
+	"bytes"
 	"encoding/json"
+	"strings"
+
+	"github.com/dvcrn/gemini-code-assist-proxy/internal/logger"
 )
 
 // ContentPart represents a single part of a content message.
@@ -36,12 +40,14 @@ type GeminiParameterSchema struct {
 
 // FunctionCall represents a tool call emitted by the model.
 type FunctionCall struct {
+	ID   string                 `json:"id,omitempty"`
 	Name string                 `json:"name,omitempty"`
 	Args map[string]interface{} `json:"args,omitempty"`
 }
 
 // FunctionResponse represents the tool result returned by the client.
 type FunctionResponse struct {
+	ID       string                 `json:"id,omitempty"`
 	Name     string                 `json:"name,omitempty"`
 	Response map[string]interface{} `json:"response,omitempty"`
 }
@@ -230,17 +236,51 @@ func (g *GeminiInternalRequest) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 
+	rawToolsPreview := previewRawTools(raw.Tools)
+	rawToolsHasCustom := bytes.Contains(raw.Tools, []byte("\"custom\""))
+	rawToolsHasInputSchema := bytes.Contains(raw.Tools, []byte("\"input_schema\""))
+
 	// First, try array of tools
 	var toolsArr []Tool
 	if err := json.Unmarshal(raw.Tools, &toolsArr); err == nil {
-		g.Tools = toolsArr
-		return nil
+		if hasFunctionDeclarations(toolsArr) {
+			if missing := fillMissingParameters(toolsArr); missing > 0 {
+				logger.Get().Warn().
+					Int("tools", len(toolsArr)).
+					Int("missing_parameters", missing).
+					Str("missing_names", missingParameterNames(toolsArr, 6)).
+					Bool("raw_tools_has_custom", rawToolsHasCustom).
+					Bool("raw_tools_has_input_schema", rawToolsHasInputSchema).
+					Str("raw_tools_preview", rawToolsPreview).
+					Msg("Defaulted missing parameters in function declarations")
+			}
+			g.Tools = toolsArr
+			return nil
+		}
 	}
 
 	// Next, try single tool object
 	var single Tool
 	if err := json.Unmarshal(raw.Tools, &single); err == nil {
-		g.Tools = []Tool{single}
+		if len(single.FunctionDeclarations) > 0 {
+			tools := []Tool{single}
+			if missing := fillMissingParameters(tools); missing > 0 {
+				logger.Get().Warn().
+					Int("tools", len(tools)).
+					Int("missing_parameters", missing).
+					Str("missing_names", missingParameterNames(tools, 6)).
+					Bool("raw_tools_has_custom", rawToolsHasCustom).
+					Bool("raw_tools_has_input_schema", rawToolsHasInputSchema).
+					Str("raw_tools_preview", rawToolsPreview).
+					Msg("Defaulted missing parameters in function declarations")
+			}
+			g.Tools = tools
+			return nil
+		}
+	}
+
+	if converted, ok := convertRawTools(raw.Tools); ok {
+		g.Tools = converted
 		return nil
 	}
 
@@ -253,6 +293,59 @@ func (g *GeminiInternalRequest) UnmarshalJSON(b []byte) error {
 	}
 	*g = GeminiInternalRequest(s)
 	return nil
+}
+
+func hasFunctionDeclarations(tools []Tool) bool {
+	for _, tool := range tools {
+		if len(tool.FunctionDeclarations) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func fillMissingParameters(tools []Tool) int {
+	missing := 0
+	for toolIndex := range tools {
+		for fnIndex := range tools[toolIndex].FunctionDeclarations {
+			if tools[toolIndex].FunctionDeclarations[fnIndex].Parameters == nil {
+				tools[toolIndex].FunctionDeclarations[fnIndex].Parameters = &GeminiParameterSchema{
+					Type: "OBJECT",
+				}
+				missing++
+			}
+		}
+	}
+	return missing
+}
+
+func missingParameterNames(tools []Tool, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	names := make([]string, 0, limit)
+	for _, tool := range tools {
+		for _, fn := range tool.FunctionDeclarations {
+			if fn.Parameters == nil {
+				names = append(names, fn.Name)
+				if len(names) >= limit {
+					return strings.Join(names, ",")
+				}
+			}
+		}
+	}
+	return strings.Join(names, ",")
+}
+
+func previewRawTools(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	const limit = 400
+	if len(raw) <= limit {
+		return string(raw)
+	}
+	return string(raw[:limit]) + "..."
 }
 
 // GenerateContentResponse represents the response from the generateContent endpoint.

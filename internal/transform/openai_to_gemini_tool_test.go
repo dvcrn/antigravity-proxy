@@ -60,6 +60,7 @@ func TestToolResponseNameResolutionViaToolCallID(t *testing.T) {
 	part := toolRespTurn.Parts[0]
 	require.NotNil(t, part.FunctionResponse, "expected functionResponse to be populated")
 	assert.Equal(t, "read", part.FunctionResponse.Name, "functionResponse.name must be resolved from tool_call_id")
+	assert.Equal(t, "call_1", part.FunctionResponse.ID, "functionResponse.id must match tool_call_id")
 
 	// Ensure the tool output was captured (we package it under a response map with 'output')
 	require.NotNil(t, part.FunctionResponse.Response, "functionResponse.response should be non-nil")

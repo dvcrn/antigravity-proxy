@@ -8,6 +8,7 @@ import (
 	"github.com/dvcrn/gemini-code-assist-proxy/internal/antigravity"
 	"github.com/dvcrn/gemini-code-assist-proxy/internal/logger"
 	"github.com/dvcrn/gemini-code-assist-proxy/internal/openai"
+	"github.com/google/uuid"
 )
 
 // ToGeminiRequest converts an OpenAI chat completion request to a Gemini generateContent request.
@@ -53,6 +54,7 @@ func ToGeminiRequest(openAIReq *openai.ChatCompletionRequest, projectID string) 
 func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents []antigravity.Content, systemInstruction *antigravity.SystemInstruction, err error) {
 	// Build tool_call_id -> function name map from assistant tool calls
 	toolCallNameByID := map[string]string{}
+	toolCallIDByName := map[string]string{}
 	var pendingToolParts []antigravity.ContentPart
 	for _, m := range messages {
 		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
@@ -131,9 +133,17 @@ func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents 
 					Str("response_preview", preview).
 					Msg("Forwarding tool response to Gemini")
 
+				resolvedID := strings.TrimSpace(msg.ToolCallID)
+				if resolvedID == "" && resolvedName != "" {
+					if id, ok := toolCallIDByName[resolvedName]; ok {
+						resolvedID = id
+					}
+				}
+
 				resp := map[string]interface{}{"output": content}
 				parts = append(parts, antigravity.ContentPart{
 					FunctionResponse: &antigravity.FunctionResponse{
+						ID:       resolvedID,
 						Name:     resolvedName,
 						Response: resp,
 					},
@@ -177,9 +187,17 @@ func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents 
 					Str("response_preview", preview).
 					Msg("Forwarding tool response to Gemini")
 
+				resolvedID := strings.TrimSpace(msg.ToolCallID)
+				if resolvedID == "" && resolvedName != "" {
+					if id, ok := toolCallIDByName[resolvedName]; ok {
+						resolvedID = id
+					}
+				}
+
 				resp := map[string]interface{}{"output": full}
 				parts = append(parts, antigravity.ContentPart{
 					FunctionResponse: &antigravity.FunctionResponse{
+						ID:       resolvedID,
 						Name:     resolvedName,
 						Response: resp,
 					},
@@ -205,8 +223,17 @@ func convertMessagesToGeminiContents(messages []openai.Message) (geminiContents 
 				if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil {
 					args = map[string]interface{}{}
 				}
+				id := tc.ID
+				if strings.TrimSpace(id) == "" {
+					id = "toolu_" + uuid.NewString()
+				}
+				if tc.Function.Name != "" {
+					toolCallNameByID[id] = tc.Function.Name
+					toolCallIDByName[tc.Function.Name] = id
+				}
 				parts = append(parts, antigravity.ContentPart{
 					FunctionCall: &antigravity.FunctionCall{
+						ID:   id,
 						Name: tc.Function.Name,
 						Args: args,
 					},
@@ -285,69 +312,5 @@ func convertToolsToGeminiTools(tools []openai.Tool) []antigravity.Tool {
 // convertToGeminiSchema recursively converts a generic map representing a JSON schema
 // into the strongly-typed GeminiParameterSchema struct, only mapping supported fields.
 func convertToGeminiSchema(input map[string]interface{}) *antigravity.GeminiParameterSchema {
-	if input == nil {
-		return nil
-	}
-
-	// Handle complex schemas with anyOf or oneOf by prioritizing the array definition.
-	var subSchemas []interface{}
-	if anyOf, ok := input["anyOf"].([]interface{}); ok {
-		subSchemas = anyOf
-	} else if oneOf, ok := input["oneOf"].([]interface{}); ok {
-		subSchemas = oneOf
-	}
-
-	if subSchemas != nil {
-		for _, subSchema := range subSchemas {
-			if subSchemaMap, ok := subSchema.(map[string]interface{}); ok {
-				if subSchemaMap["type"] == "array" {
-					// Found the preferred array schema, convert it.
-					// We also merge the description from the parent level.
-					if parentDesc, ok := input["description"].(string); ok {
-						subSchemaMap["description"] = parentDesc
-					}
-					return convertToGeminiSchema(subSchemaMap)
-				}
-			}
-		}
-	}
-
-	output := &antigravity.GeminiParameterSchema{}
-	if t, ok := input["type"].(string); ok {
-		output.Type = strings.ToUpper(t)
-	}
-	if d, ok := input["description"].(string); ok {
-		output.Description = d
-	}
-
-	if r, ok := input["required"].([]interface{}); ok {
-		for _, v := range r {
-			if s, ok := v.(string); ok {
-				output.Required = append(output.Required, s)
-			}
-		}
-	}
-
-	if e, ok := input["enum"].([]interface{}); ok {
-		for _, v := range e {
-			if s, ok := v.(string); ok {
-				output.Enum = append(output.Enum, s)
-			}
-		}
-	}
-
-	if p, ok := input["properties"].(map[string]interface{}); ok {
-		output.Properties = make(map[string]*antigravity.GeminiParameterSchema)
-		for k, v := range p {
-			if vMap, ok := v.(map[string]interface{}); ok {
-				output.Properties[k] = convertToGeminiSchema(vMap)
-			}
-		}
-	}
-
-	if i, ok := input["items"].(map[string]interface{}); ok {
-		output.Items = convertToGeminiSchema(i)
-	}
-
-	return output
+	return antigravity.ConvertSchema(input)
 }

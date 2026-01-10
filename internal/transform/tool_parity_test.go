@@ -90,11 +90,13 @@ func TestToolParityAggregation(t *testing.T) {
 	assert.Equal(t, "user", userToolRespTurn.Role, "third turn should be user (tool responses)")
 
 	respNames := make([]string, 0, 2)
+	respIDs := make([]string, 0, 2)
 	respCount := 0
 	for _, p := range userToolRespTurn.Parts {
 		if p.FunctionResponse != nil {
 			respCount++
 			respNames = append(respNames, p.FunctionResponse.Name)
+			respIDs = append(respIDs, p.FunctionResponse.ID)
 			require.NotNil(t, p.FunctionResponse.Response, "functionResponse response should not be nil")
 			// Ensure we preserved some output (non-empty)
 			if out, ok := p.FunctionResponse.Response["output"].(string); ok {
