@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -104,6 +105,17 @@ func (s *Server) handleGenerateContent(w http.ResponseWriter, r *http.Request, m
 			Str("model", model).
 			Dur("api_call_duration", time.Since(apiCallStart)).
 			Msg("GenerateContent failed")
+
+		var upstreamErr *antigravity.UpstreamError
+		if ok := errors.As(err, &upstreamErr); ok {
+			if upstreamErr.ContentType != "" {
+				w.Header().Set("Content-Type", upstreamErr.ContentType)
+			}
+			w.WriteHeader(upstreamErr.StatusCode)
+			_, _ = w.Write(upstreamErr.Body)
+			return
+		}
+
 		http.Error(w, fmt.Sprintf("Error calling GenerateContent: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -154,20 +166,6 @@ func (s *Server) handleStreamGenerateContent(w http.ResponseWriter, r *http.Requ
 		Model:   model,
 		Project: s.projectID,
 		Request: requestBody,
-	}
-
-	// Prepare SSE response headers
-	w.Header().Del("Content-Length")
-	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-
-	// Flush headers if supported
-	var flusher http.Flusher
-	if f, ok := w.(http.Flusher); ok {
-		flusher = f
-		flusher.Flush()
 	}
 
 	// Start upstream streaming and pipe raw lines
@@ -234,20 +232,33 @@ func (s *Server) handleStreamGenerateContent(w http.ResponseWriter, r *http.Requ
 			Int("function_declarations", fnDecls).
 			Int("max_output_tokens", maxTok).
 			Msg("Upstream request summary (on error)")
-		// We already wrote SSE headers; emit an SSE-formatted error payload instead of resetting headers.
-		errPayload := map[string]interface{}{
-			"error": map[string]interface{}{
-				"message": err.Error(),
-			},
-		}
-		if b, mErr := json.Marshal(errPayload); mErr == nil {
-			_, _ = fmt.Fprintf(w, "data: %s\n\n", string(b))
-			_, _ = io.WriteString(w, "data: [DONE]\n\n")
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
+
+		var upstreamErr *antigravity.UpstreamError
+		if ok := errors.As(err, &upstreamErr); ok {
+			if upstreamErr.ContentType != "" {
+				w.Header().Set("Content-Type", upstreamErr.ContentType)
 			}
+			w.WriteHeader(upstreamErr.StatusCode)
+			_, _ = w.Write(upstreamErr.Body)
+			return
 		}
+
+		http.Error(w, fmt.Sprintf("Error calling StreamGenerateContent: %v", err), http.StatusInternalServerError)
 		return
+	}
+
+	// Prepare SSE response headers
+	w.Header().Del("Content-Length")
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	// Flush headers if supported
+	var flusher http.Flusher
+	if f, ok := w.(http.Flusher); ok {
+		flusher = f
+		flusher.Flush()
 	}
 
 	// Stream loop: transform data lines and forward to client

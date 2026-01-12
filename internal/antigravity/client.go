@@ -14,6 +14,30 @@ import (
 	"github.com/dvcrn/antigravity-proxy/internal/logger"
 )
 
+type UpstreamError struct {
+	StatusCode  int
+	Body        []byte
+	ContentType string
+	Endpoint    string
+}
+
+func (e *UpstreamError) Error() string {
+	if e == nil {
+		return "upstream error"
+	}
+
+	const maxPreview = 1024
+	preview := string(e.Body)
+	if len(preview) > maxPreview {
+		preview = preview[:maxPreview] + "..."
+	}
+
+	if e.Endpoint != "" {
+		return fmt.Sprintf("upstream %s returned status %d: %s", e.Endpoint, e.StatusCode, preview)
+	}
+	return fmt.Sprintf("upstream returned status %d: %s", e.StatusCode, preview)
+}
+
 // Client is a client for the Antigravity Cloud Code API.
 type Client struct {
 	httpClient serverhttp.HTTPClient
@@ -160,7 +184,12 @@ func (c *Client) GenerateContent(req *GenerateContentRequest) (*GenerateContentR
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("generateContent failed with status %d: %s", resp.StatusCode, string(respBody))
+			lastErr = &UpstreamError{
+				StatusCode:  resp.StatusCode,
+				Body:        respBody,
+				ContentType: resp.Header.Get("Content-Type"),
+				Endpoint:    endpoint,
+			}
 			logger.Get().Warn().
 				Int("status", resp.StatusCode).
 				Str("endpoint", endpoint).
@@ -211,6 +240,7 @@ func (c *Client) StreamGenerateContent(ctx context.Context, req *GenerateContent
 				logger.Get().Warn().Err(readErr).Str("endpoint", endpoint).Msg("streamGenerateContent response read failed")
 				continue
 			}
+
 			const maxPreview = 1024
 			rprev := string(respBody)
 			if len(rprev) > maxPreview {
@@ -228,7 +258,13 @@ func (c *Client) StreamGenerateContent(ctx context.Context, req *GenerateContent
 				Int("request_body_len", len(bodyBytes)).
 				Str("request_body_preview", qprev).
 				Msg("Upstream error on streamGenerateContent")
-			lastErr = fmt.Errorf("streamGenerateContent failed with status %d: %s", resp.StatusCode, string(respBody))
+
+			lastErr = &UpstreamError{
+				StatusCode:  resp.StatusCode,
+				Body:        respBody,
+				ContentType: resp.Header.Get("Content-Type"),
+				Endpoint:    endpoint,
+			}
 			continue
 		}
 
