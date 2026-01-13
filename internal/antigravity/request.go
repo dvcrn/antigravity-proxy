@@ -31,6 +31,8 @@ func prepareAntigravityRequest(req *GenerateContentRequest) {
 			Msg("Removed empty content parts from request")
 	}
 
+	applyGeminiThinkingPreset(req)
+
 	if missing := fillMissingParameters(req.Request.Tools); missing > 0 {
 		logger.Get().Warn().
 			Int("missing_parameters", missing).
