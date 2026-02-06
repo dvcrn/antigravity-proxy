@@ -1,5 +1,4 @@
 .env
-gemini-proxy
 node_modules
 *.wasm
 .wrangler/
@@ -7,6 +6,15 @@ node_modules
 *.har
 *.proxymanlogv2
 build/
-com.gemini-proxy.plist
-/gemini-code-assist-proxy
 .gocache
+dist
+
+/antigravity-proxy
+/antigravity-proxy.exe
+npm/antigravity-proxy
+npm/antigravity-proxy.exe
+
+com.antigravity-proxy.plist
+com.gemini-proxy.plist
+/gemini-proxy
+/gemini-code-assist-proxy

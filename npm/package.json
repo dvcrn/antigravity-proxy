@@ -1,0 +1,17 @@
+{
+  "name": "@dvcrn/antigravity-proxy",
+  "version": "1.0.0",
+  "description": "Release package for antigravity-proxy",
+  "scripts": {
+    "postinstall": "node postinstall.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "antigravity-proxy": "index.js"
+  },
+  "dependencies": {
+    "semver": "^7.7.4"
+  }
+}
