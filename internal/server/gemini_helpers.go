@@ -55,6 +55,37 @@ func unwrapCloudCodeResponse(cloudCodeResp map[string]interface{}) map[string]in
 	return geminiResp
 }
 
+// normalizeCitationMetadata mirrors each candidate's citationMetadata.citations
+// array onto citationSources. Upstream CloudCode emits the newer "citations"
+// name, while the public v1beta schema clients validate against requires
+// "citationSources". Both are kept so existing consumers are unaffected.
+func normalizeCitationMetadata(response map[string]interface{}) {
+	candidates, ok := response["candidates"].([]interface{})
+	if !ok {
+		return
+	}
+
+	for _, candidate := range candidates {
+		candidateMap, ok := candidate.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		metadata, ok := candidateMap["citationMetadata"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if _, exists := metadata["citationSources"]; exists {
+			continue
+		}
+
+		if citations, ok := metadata["citations"]; ok {
+			metadata["citationSources"] = citations
+		}
+	}
+}
+
 // TransformSSELine transforms a CloudCode SSE data line to standard Gemini format
 func TransformSSELine(line string) string {
 	if !strings.HasPrefix(line, "data: ") {
@@ -75,6 +106,7 @@ func TransformSSELine(line string) string {
 
 	// Unwrap the CloudCode response
 	geminiResp := unwrapCloudCodeResponse(cloudCodeResp)
+	normalizeCitationMetadata(geminiResp)
 
 	// Convert back to JSON
 	transformedJSON, err := json.Marshal(geminiResp)

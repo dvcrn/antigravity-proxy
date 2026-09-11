@@ -132,6 +132,8 @@ func (s *Server) handleGenerateContent(w http.ResponseWriter, r *http.Request, m
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
+	normalizeCitationMetadata(resp.Response)
+
 	if err := json.NewEncoder(w).Encode(resp.Response); err != nil {
 		logger.Get().Error().Err(err).Msg("Failed to encode response")
 		return
